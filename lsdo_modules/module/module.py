@@ -1,7 +1,8 @@
 
 
 class Module:
-    def __init__(self) -> None:
+    def __init__(self, **kwargs) -> None:
+        self.__dict__.update(kwargs)
         self.inputs = dict()
         self.outputs = dict()
         self.promoted_vars = list()
