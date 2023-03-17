@@ -21,6 +21,11 @@ from csdl import Model
 import numpy as np
 from copy import copy
 
+from lsdo_modules.utils.unpack_module import unpack_module
+from json2html import *
+import os 
+import webbrowser
+
 def _to_array(
     x: Union[int, float, np.ndarray, Variable]
 ) -> Union[np.ndarray, Variable]:
@@ -117,7 +122,23 @@ class ModuleMaker:
         else:
             # print('YES MODULE')
             if name not in self.module.inputs:
-                raise Exception(f"CSDL variable '{name}' is not found within the set module inputs: {list(self.module.inputs.keys())}. When calling 'set_module_input()', make sure the string matches '{name}'.")
+                v = DeclaredVariable(
+                    name,
+                    val=check_default_val_type(val),
+                    shape=shape,
+                    src_indices=src_indices,
+                    flat_src_indices=flat_src_indices,
+                    units=units,
+                    desc=desc,
+                    tags=tags,
+                    shape_by_conn=shape_by_conn,
+                    copy_shape=copy_shape,
+                    distributed=distributed,
+                )
+                self.module_info.append(v)
+                self.module_inputs.append(name)
+                return v
+                # raise Exception(f"CSDL variable '{name}' is not found within the set module inputs: {list(self.module.inputs.keys())}. When calling 'set_module_input()', make sure the string matches '{name}'.")
             else:
                 mod_var = self.module.inputs[name]
                 mod_var_units = mod_var['units']
@@ -365,11 +386,8 @@ class ModuleMaker:
         # promote_all=False
         promote=None
     ):
-        csdl_model = submodule.assemble_module()
+        csdl_model = submodule.assemble_csdl()
         self.promoted_vars += submodule.promoted_vars
-        self.design_variables.update(submodule.design_variables)
-        self.objective.update(submodule.objective)
-        self.constraints.update(submodule.constraints)
         
         sub_module_info = {
             'csdl_model': csdl_model,
@@ -382,11 +400,58 @@ class ModuleMaker:
         
         return sub_module_info
 
-    def get_module_info(self):
-        self.define_module()
-        return self.module_info
-
-    def assemble_module(self): 
+    def generate_html(self, sim=None):
+        # self.define_module()
+        module_info = self.module_info
+        module_dict = unpack_module(module_info)
+        def recursive_items(dictionary):
+            for key, value in dictionary.items():
+                if type(value) is dict:
+                    yield (key, value)
+                    yield from recursive_items(value)
+                else:
+                    yield (key, value)
+        
+        def append_to_dict(d, key, value):
+            """
+            Appends a value to a key in an arbitrarily nested dictionary.
+            """
+            for k, v in d.items():
+                if k == key:
+                    d[k]['Inputs']['value'] = value
+                    d[k]['Outputs']['value'] = value
+                    # if isinstance(v, list):
+                    #     print(d[k])
+                    #     d[k]['value'] = value
+                    # else:
+                    #     d[k] = [v, value]
+                elif isinstance(v, dict):
+                    append_to_dict(v, key, value)
+            return d
+        
+        if sim:            
+            inputs = []
+            outputs = []
+            for key, value in recursive_items(module_dict):
+                if key is 'Inputs':
+                    inputs += list(value.keys())
+                elif key is 'Outputs':
+                    outputs += list(value.keys())
+            for input in inputs:
+                val = sim[input]
+                append_to_dict(module_dict, input, val)
+            for output in outputs:
+                val = sim[output]
+                append_to_dict(module_dict, output, val)
+        # exit()
+        # print('dict_keys', module_dict.keys())
+        html = json2html.convert(json=module_dict)
+        open('module_test.html', 'w').write(html)
+        filename = 'file:///' + os.getcwd()+'/' + 'module_test.html'
+        webbrowser.open_new_tab(filename)
+        
+    
+    def assemble_csdl(self): 
         self.define_module()
         all_promoted_vars = self.promoted_vars
         design_variables = self.design_variables
@@ -398,31 +463,23 @@ class ModuleMaker:
             def initialize(self): pass
 
             def define(self):
+                vars = []
                 for entry in module_info: # self.module_info:
+                    
                     # Inputs
                     if isinstance(entry, DeclaredVariable):
-                        self.declare_variable(entry.name, entry.val, entry.shape)
-                        if entry.name in constraints.keys():
-                            name = entry.name
-                            self.add_constraint(
-                                name=name,
-                                lower=constraints[name]['lower'],
-                                upper=constraints[name]['upper'],
-                                equals=constraints[name]['equals'],
-                                ref=constraints[name]['ref'],
-                                ref0=constraints[name]['ref0'],
-                                adder=constraints[name]['adder'],
-                                scaler=constraints[name]['scaler'],
-                                units=constraints[name]['units'],
-                                indices=constraints[name]['indices'],
-                                linear=constraints[name]['linear'],
-                                parallel_deriv_color=constraints[name]['parallel_deriv_color'],
-                                cache_linear_solution=constraints[name]['cache_linear_solution'],
-                            )
+                        name = entry.name
+                        val = entry.val
+                        shape = entry.shape
+                        self.declare_variable(name=name, val=val, shape=shape)
+                        vars.append(name)
 
                     elif isinstance(entry, Input):
-                        self.create_input(name=entry.name, val=entry.val, shape=entry.shape)
-                        if entry.name in design_variables:
+                        name = entry.name
+                        val = entry.val
+                        shape = entry.shape
+                        self.create_input(name=name, val=val, shape=shape)
+                        if name in design_variables:
                             dv = design_variables[entry.name]
                             self.add_design_variable(
                                 dv_name=entry.name,
@@ -430,29 +487,13 @@ class ModuleMaker:
                                 upper=dv['upper'],
                                 scaler=dv['scaler'],
                             )
-                        elif entry.name in constraints.keys():
-                            name = entry.name
-                            self.add_constraint(
-                                name=name,
-                                lower=constraints[name]['lower'],
-                                upper=constraints[name]['upper'],
-                                equals=constraints[name]['equals'],
-                                ref=constraints[name]['ref'],
-                                ref0=constraints[name]['ref0'],
-                                adder=constraints[name]['adder'],
-                                scaler=constraints[name]['scaler'],
-                                units=constraints[name]['units'],
-                                indices=constraints[name]['indices'],
-                                linear=constraints[name]['linear'],
-                                parallel_deriv_color=constraints[name]['parallel_deriv_color'],
-                                cache_linear_solution=constraints[name]['cache_linear_solution'],
-                            )
+                        vars.append(name)
                         
                     # Outputs
                     elif isinstance(entry, Output):
-                        self.register_output(name=entry.name, var=entry)
-                        if entry.name in objective.keys():
-                            name =  entry.name
+                        name =  entry.name
+                        self.register_output(name=name, var=entry)
+                        if name in objective.keys():
                             self.add_objective(
                                 name=name,
                                 # ref=objective[name]['ref'],
@@ -464,45 +505,25 @@ class ModuleMaker:
                                 parallel_deriv_color=objective[name]['parallel_deriv_color'],
                                 cache_linear_solution=objective[name]['cache_linear_solution'],
                             )
-                        elif entry.name in constraints.keys():
-                            name = entry.name
-                            self.add_constraint(
-                                name=name,
-                                lower=constraints[name]['lower'],
-                                upper=constraints[name]['upper'],
-                                equals=constraints[name]['equals'],
-                                ref=constraints[name]['ref'],
-                                ref0=constraints[name]['ref0'],
-                                adder=constraints[name]['adder'],
-                                scaler=constraints[name]['scaler'],
-                                units=constraints[name]['units'],
-                                indices=constraints[name]['indices'],
-                                linear=constraints[name]['linear'],
-                                parallel_deriv_color=constraints[name]['parallel_deriv_color'],
-                                cache_linear_solution=constraints[name]['cache_linear_solution'],
-                            )
-                        else:
-                            pass
+                        vars.append(name)
+
                     elif isinstance(entry, Concatenation):
-                        self.register_output(name=entry.name, var=entry)
-                        if entry.name in constraints.keys():
-                            name = entry.name
-                            self.add_constraint(
+                        name = entry.name
+                        self.register_output(name=name, var=entry)
+                        if name in objective.keys():
+                            self.add_objective(
                                 name=name,
-                                lower=constraints[name]['lower'],
-                                upper=constraints[name]['upper'],
-                                equals=constraints[name]['equals'],
-                                ref=constraints[name]['ref'],
-                                ref0=constraints[name]['ref0'],
-                                adder=constraints[name]['adder'],
-                                scaler=constraints[name]['scaler'],
-                                units=constraints[name]['units'],
-                                indices=constraints[name]['indices'],
-                                linear=constraints[name]['linear'],
-                                parallel_deriv_color=constraints[name]['parallel_deriv_color'],
-                                cache_linear_solution=constraints[name]['cache_linear_solution'],
+                                # ref=objective[name]['ref'],
+                                ref0=objective[name]['ref0'],
+                                index=objective[name]['index'],
+                                units=objective[name]['units'],
+                                adder=objective[name]['adder'],
+                                scaler=objective[name]['scaler'],
+                                parallel_deriv_color=objective[name]['parallel_deriv_color'],
+                                cache_linear_solution=objective[name]['cache_linear_solution'],
                             )
-                    
+                        vars.append(name)
+
                     # Adding submodel
                     elif isinstance(entry, dict):
                         csdl_submodel = entry['csdl_model']
@@ -527,68 +548,32 @@ class ModuleMaker:
                     else:
                         raise NotImplementedError
 
-        # model = Model()
-        # for entry in self.module_info:
-        #     # Inputs
-        #     if isinstance(entry, DeclaredVariable):
-        #         model.declare_variable(entry.name, entry.val, entry.shape)
-        #     elif isinstance(entry, Input):
-        #         model.create_input(name=entry.name, val=entry.val, shape=entry.shape)
-        #         if entry.name in design_variables:
-        #             dv = design_variables[entry.name]
-        #             model.add_design_variable(
-        #                 dv_name=entry.name,
-        #                 lower=dv['lower'],
-        #                 upper=dv['upper'],
-        #                 scaler=dv['scaler'],
-        #             )
+                    # Adding constraints
                 
-        #     # Outputs
-        #     elif isinstance(entry, Output):
-        #         model.register_output(name=entry.name, var=entry)
-        #         if entry.name in objective.keys():
-        #             name =  entry.name
-        #             model.add_objective(
-        #                 name=name,
-        #                 ref=objective[name]['ref'],
-        #                 ref0=objective[name]['ref0'],
-        #                 index=objective[name]['index'],
-        #                 units=objective[name]['units'],
-        #                 adder=objective[name]['adder'],
-        #                 scaler=objective[name]['scaler'],
-        #                 parallel_deriv_color=objective[name]['parallel_deriv_color'],
-        #                 cache_linear_solution=objective[name]['cache_linear_solution'],
-        #             )
-        #         else:
-        #            pass
-        #     elif isinstance(entry, Concatenation):
-        #         model.register_output(name=entry.name, var=entry)
-            
-        #     # Adding submodel
-        #     elif isinstance(entry, dict):
-        #         csdl_submodel = entry['csdl_model']
-        #         submodule = entry['sub_module']
-        #         module_inputs = submodule.module_inputs
-        #         name = entry['name']
-        #         promote_all = entry['promote_all']
-        #         if promote_all is True:
-        #             promotes=None
-        #         else:
-        #             promotes = submodule.promoted_vars + [e for e in all_promoted_vars if e in module_inputs]
+                constraint_vars = list(set(vars).intersection(list(constraints.keys())))
+                
+        
+        print(print('CONSTRAINTS', constraints))
+        csdl_model = CSDLModel()
+        for name in constraints.keys():
+            csdl_model.add_constraint(
+                name=name,
+                lower=constraints[name]['lower'],
+                upper=constraints[name]['upper'],
+                equals=constraints[name]['equals'],
+                ref=constraints[name]['ref'],
+                ref0=constraints[name]['ref0'],
+                adder=constraints[name]['adder'],
+                scaler=constraints[name]['scaler'],
+                units=constraints[name]['units'],
+                indices=constraints[name]['indices'],
+                linear=constraints[name]['linear'],
+                parallel_deriv_color=constraints[name]['parallel_deriv_color'],
+                cache_linear_solution=constraints[name]['cache_linear_solution'],
+            )
 
-        #         model.add(csdl_submodel, name, promotes)
-            
-        #     else:
-        #         raise NotImplementedError
+        return csdl_model
 
-            
-
-        return CSDLModel()
-        # class CSDLModel(Model):
-        #     def initialize(self): pass
-
-        #     def define(self): 
-        #         for var in self.
     def _bracketed_search(
         self,
         states: Dict[str, Dict[str, Any]],
@@ -1216,8 +1201,8 @@ class ModuleMaker:
             return outs[0]
         
     def create_implicit_operation(self, module): 
-        # self_arg = self.assemble_module()
-        csdl_model = module.assemble_module()
+        # self_arg = self.assemble_csdl()
+        csdl_model = module.assemble_csdl()
         return ImplicitOperationFactory(self, csdl_model)
         # return ImplicitModule(module)
 

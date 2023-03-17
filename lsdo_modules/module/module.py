@@ -1,8 +1,7 @@
 
-
+# NOTE Unpack kwarg dictionary 
 class Module:
     def __init__(self, **kwargs) -> None:
-        self.__dict__.update(kwargs)
         self.inputs = dict()
         self.outputs = dict()
         self.promoted_vars = list()
@@ -28,6 +27,8 @@ class Module:
             upper=upper,
             scaler=scaler,
         )
+
+    
 
 
     # TODO/ thoughts: 
