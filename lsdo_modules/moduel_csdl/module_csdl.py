@@ -25,11 +25,7 @@ class ModuleCSDL(Model):
         self._auto_ivc = list()
         
         super().__init__(**kwargs)
-    
-        self.module_created_inputs = dict()
-        self.module_declared_vars = dict()
-        self.module_registered_outputs = dict()
-        self.module_created_outputs = dict()
+
         self.objective = dict()
         self.design_variables = dict()
         self.design_constraints = dict()
