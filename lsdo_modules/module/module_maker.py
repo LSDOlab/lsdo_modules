@@ -412,37 +412,54 @@ class ModuleMaker:
                 else:
                     yield (key, value)
         
-        def append_to_dict(d, key, value):
-            """
-            Appends a value to a key in an arbitrarily nested dictionary.
-            """
-            for k, v in d.items():
-                if k == key:
-                    d[k]['Inputs']['value'] = value
-                    d[k]['Outputs']['value'] = value
-                    # if isinstance(v, list):
-                    #     print(d[k])
-                    #     d[k]['value'] = value
-                    # else:
-                    #     d[k] = [v, value]
-                elif isinstance(v, dict):
-                    append_to_dict(v, key, value)
-            return d
+        def append_value_to_key(nested_dict, key_value_pair, new_value):
+            # Loop through the dictionary to find the key-value pair
+            for key, value in nested_dict.items():
+                if isinstance(value, dict):
+                    # If the current value is a dictionary, call the function recursively
+                    nested_dict[key] = append_value_to_key(value, key_value_pair, new_value)
+                elif key == key_value_pair[0] and value == key_value_pair[1]:
+                    # If we find the key-value pair, modify the key by appending the new value
+                    
+                    # Update the dictionary with the new key and the same value
+                    nested_dict['value'] = new_value
+                else:
+                    print(key_value_pair)
+            return nested_dict
+        
+        
+        # def append_to_dict(d, key1, key2, value):
+        #     """
+        #     Appends a value to a key in an arbitrarily nested dictionary.
+        #     """
+        #     for k, v in d.items():
+        #         if k == key:
+        #             d[k]['Inputs']['value'] = value
+        #             d[k]['Outputs']['value'] = value
+        #             # if isinstance(v, list):
+        #             #     print(d[k])
+        #             #     d[k]['value'] = value
+        #             # else:
+        #             #     d[k] = [v, value]
+        #         elif isinstance(v, dict):
+        #             append_to_dict(v, key, value)
+        #     return d
         
         if sim:            
-            inputs = []
-            outputs = []
-            for key, value in recursive_items(module_dict):
-                if key is 'Inputs':
-                    inputs += list(value.keys())
-                elif key is 'Outputs':
-                    outputs += list(value.keys())
-            for input in inputs:
-                val = sim[input]
-                append_to_dict(module_dict, input, val)
-            for output in outputs:
-                val = sim[output]
-                append_to_dict(module_dict, output, val)
+            # inputs = []
+            # outputs = []
+            # for key, value in recursive_items(module_dict):
+            #     if key is 'Inputs':
+            #         inputs += list(value.keys())
+            #     elif key is 'Outputs':
+            #         outputs += list(value.keys())
+            # for input in inputs:
+            #     val = sim[input]
+            #     append_value_to_key(module_dict, ('Inputs', input), val)
+            # for output in outputs:
+            #     val = sim[output]
+            #     append_value_to_key(module_dict, ('Outputs', output), val)
+            pass
         # exit()
         # print('dict_keys', module_dict.keys())
         html = json2html.convert(json=module_dict)

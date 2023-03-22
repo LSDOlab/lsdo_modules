@@ -24,7 +24,7 @@ class ThrustCSDL(ModuleCSDL):
     def define(self):
         rho = self.parameters['rho']
 
-        R = self.register_module_input('radius')
+        R = self.register_module_input('radius', shape=(1, ))
         self.print_var(R)
         C_T = self.register_module_input('C_T')
         rpm = self.register_module_input('rpm')
@@ -48,16 +48,25 @@ class ThrustComputationCSDL(ModuleCSDL):
             module=self.module,
             scaling_factor=scaling_factor,
         )
-        GraphRepresentation(radius_module_csdl)
-        self.add_module(radius_module_csdl, 'radius_module', promote_all=False)
-        print(radius_module_csdl.promoted_vars)
+        # GraphRepresentation(radius_module_csdl)
+        self.add_module(radius_module_csdl, 'radius_module')
+        print('radius_module_inputs', radius_module_csdl.module_inputs)
+        print('modules', self.sub_modules[0].module_inputs)
+        print('\n')
+
+        a = self.create_input('a', val=100)
+        self.register_output('a_10', a/10)
 
         thrust_module_csdl = ThrustCSDL(
             module=self.module,
             rho=rho,
         )
-        GraphRepresentation(thrust_module_csdl)
-        self.add_module(thrust_module_csdl, 'thrust_module', promote_all=False)
+        # GraphRepresentation(thrust_module_csdl)
+        self.add_module(thrust_module_csdl, 'thrust_module')
+        print('thrust_module_inputs', thrust_module_csdl.module_inputs)
+
+        thrust = self.register_module_input('thrustt', val=2, shape=(1, ))
+        self.register_module_output('thrust_test', thrust*1)
 
 
 # define your module (pure python object)
@@ -103,9 +112,14 @@ thrust_module.set_module_input('C_T', val=0.25)
 thrust_module.set_module_input('rpm', val=1200)
 
 thrust_module_csdl = thrust_module.assemble_csdl()
+print('\n')
+print('module_inputs',thrust_module_csdl.sub_modules[0].module_inputs[0].name)
 graph = GraphRepresentation(thrust_module_csdl)
+
 # print(graph.module)
 sim = Simulator(thrust_module_csdl)
+print('module_inputs',thrust_module_csdl.sub_modules)
 sim.run()
 print(thrust_module_csdl.module.promoted_vars)
-print(sim['thrust'])
+print('thrust', sim['thrust'])
+print('thrust_test', sim['thrust_test'])
