@@ -2,6 +2,8 @@ from csdl import Model
 import numpy as np
 from csdl import GraphRepresentation
 import warnings
+from lsdo_modules.utils.make_xdsm import make_xdsm
+
 
 def custom_formatwarning(msg, *args, **kwargs):
     # ignore everything except the message
@@ -14,22 +16,23 @@ class ModuleCSDL(Model):
     Class acting as a liason between CADDEE and CSDL. 
     The API mirrors that of the CSDL Model class. 
     """ 
-    def __init__(self, module=None, **kwargs):
+    def __init__(self, module=None, sub_modules=None, name=None, **kwargs):
         self.module = module
+        self.sub_modules_csdl = sub_modules
+        self.name = name
         self.promoted_vars = list()
         
-        self.module_inputs = list()
-        self.module_outputs = list()
-        self.sub_modules = list()
+        self.module_inputs = dict()
+        self.module_outputs = dict()
+        self.sub_modules = dict()
         self._module_output_names = list()
-        self._auto_ivc = list()
+        self._auto_iv = list()
         
         super().__init__(**kwargs)
 
         self.objective = dict()
         self.design_variables = dict()
         self.design_constraints = dict()
-        # self.sub_modules = dict()
         self.connections = list()
         
 
@@ -43,102 +46,118 @@ class ModuleCSDL(Model):
             desc='',
             importance=0,
         ):
+        print('dev_declared_input', name)
+        # If there is a module associated with the ModuleCSDL instance
+        # The created CSDL variable will be of type Input
+        if self.module:
+            # Check if the variable set by the user when calling 'set_module_input()' 
+            # matches what the variable defined by the (solver) developer when calling
+            # 'self.regsiter_module_input' If not, check if the variable is an output 
+            # of an upstreams model. If not raise a warning and make the variable
+            # an instance of DeclaredVariable
+            if name not in self.module.inputs:
+                # Get all module outputs of upstream modules and append to a list
+                if self.sub_modules_csdl is not None:
+                    for sub_module in {**self.sub_modules_csdl, **self.sub_modules}.values():
+                        module_outputs = sub_module['outputs']
+                        self._module_output_names += [name for name in module_outputs]
+                else:
+                    for sub_module in self.sub_modules.values():
+                        module_outputs = sub_module['outputs']
+                        self._module_output_names += [name for name in module_outputs]
+                # Check if the variable is computed in an upstream module
+                if name in self._module_output_names:
+                    input_variable = self.declare_variable(name=name, shape=shape)
+                    self.module_inputs[name] = dict(
+                        shape=shape, 
+                        importance=importance)
+                # Raise warning if not and store variable name, shape, val in auto_iv
+                else:
+                    input_variable = self.declare_variable(name=name, val=val, shape=shape)
+                    self._auto_iv.append((name, val, shape))
+                    self.module_inputs[name] = dict(
+                        shape=shape, 
+                        importance=importance)
+                    warnings.warn(f"CSDL variable '{name}' is neither a user-defined input (specified with the 'set_module_input' method) nor an output that is computed upstream (all upstream outputs: {self._module_output_names}). This variable will by of type 'DeclaredVariable' with shape {shape} and value {val}")
+            
+            # else: the variable is set by the user via 'set_module_input'
+            else:
+                mod_var = self.module.inputs[name]
+                mod_var_val = mod_var['val']
+                
+                # Check whether the sizes of the set module input and the to be 
+                # created/declares CSDL variable match in size
+                if not isinstance(mod_var_val, (float, int)) and np.size(mod_var_val) != np.prod(shape):
+                    raise Exception(f'Size mismatch- module input {name} has size {np.size(mod_var)} but the corresponding csdl variable has shape {shape}')
+                elif np.size(mod_var_val) == 1:
+                    pass
+                else:
+                    mod_var_val = mod_var_val.reshape(shape)
+                
+                # Check whether variable is a float, int or array and assign 
+                # shape accordingly
+                if isinstance(mod_var_val, (float, int)) and shape == (1, ):
+                    mod_var_shape = (1, )
+                elif isinstance(mod_var_val, (float, int)) and shape != (1, ): # corresponds to expanding a scaler to another scaler
+                    mod_var_shape = shape
+                else:
+                    mod_var_shape = mod_var_val.shape
+                        
+                mod_var_units = mod_var['units']    
 
-        # Check if the variable set by the user when calling 'set_module_input()' 
-        # matches what the variable defined by the (solver) developer when calling
-        # 'self.regsiter_module_input'
-        # TODO: modify line below such that it also checks whether the variable might be the output of an upstream model
-        if name not in self.module.inputs:
-            for sub_module in self.sub_modules:
-                module_outputs = sub_module.module_outputs
-                self._module_output_names += [output.name for output in module_outputs]
-            print('module_outputs', self._module_output_names)
-            print('sub_modules', self.sub_modules)
-            if name in self._module_output_names:
-                input_variable = self.declare_variable(name=name, shape=shape)
-            else:
-                # raise Exception(f"CSDL variable '{name}' is not found within the set module inputs: {list(self.module.inputs.keys())}. When calling 'set_module_input()', make sure the string matches '{name}'.")
-                input_variable = self.declare_variable(name=name, val=val, shape=shape)
-                warnings.warn(f"CSDL variable '{name}' is neither a user-defined input (specified with the 'set_module_input' method) nor an output that is computed upstream (all upstream outputs: {self._module_output_names}). This variable will by of type 'DeclaredVariable' with shape {shape} and value {val}")
-
-            print('sub_modules', self.sub_modules)
-            print('_module_output_names', self._module_output_names)
-            
-        else:
-            mod_var = self.module.inputs[name]
-            mod_var_val = mod_var['val']
-            if mod_var_val:
-                pass
-            else:
-                mod_var_val = val
-            
-            # Check whether the sizes of the set module input and the to be 
-            # created/declares CSDL variable match in size
-            if not isinstance(mod_var_val, (float, int)) and np.size(mod_var_val) != np.prod(shape):
-                raise Exception(f'Size mismatch- module input {name} has size {np.size(mod_var)} but the corresponding csdl variable has shape {shape}')
-            elif np.size(mod_var_val) == 1:
-                pass
-            else:
-                mod_var_val = mod_var_val.reshape(shape)
-            
-            # Check whether variable is a float, int or array and assign 
-            # shape accordingly
-            if isinstance(mod_var_val, (float, int)) and shape is (1, ):
-                mod_var_shape = (1, )
-            elif isinstance(mod_var_val, (float, int)) and shape is not (1, ): # corresponds to expanding a scaler to another scaler
-                mod_var_shape = shape
-            elif mod_var_val is None:
-                mod_var_shape = shape,
-            else:
-                mod_var_shape = mod_var_val.shape
+                if mod_var['dv_flag'] is False:
+                    input_variable = self.create_input(
+                        name=name,
+                        val=mod_var_val,
+                        shape=mod_var_shape,
+                        units=mod_var_units,
+                        desc=desc,
+                    )
+                    self.module_inputs[name] = dict(
+                        shape=shape, 
+                        importance=importance)
                     
-            mod_var_units = mod_var['units']    
 
-            if mod_var['computed_upstream'] is True:
-                self.module.csdl_inputs.append(name)
-                input_variable = self.declare_variable(
-                    name=name, 
-                    val=mod_var_val,
-                    shape=mod_var_shape,
-                    units=mod_var_units,
-                    desc=desc,
-                )
-                self.module_inputs.append(input_variable)
-            elif mod_var['computed_upstream'] is False and mod_var['dv_flag'] is False:
-                self.module.csdl_inputs.append(name)
-                input_variable = self.create_input(
-                    name=name,
-                    val=mod_var_val,
-                    shape=mod_var_shape,
-                    units=mod_var_units,
-                    desc=desc,
-                )
-                self.module_inputs.append(input_variable)
-            elif mod_var['computed_upstream'] is False and mod_var['design_variable'] is True:
-                self.module.csdl_inputs.append(name)
-                input_variable = self.create_input(
-                    name=name,
-                    val=mod_var_val,
-                    shape=mod_var_shape,
-                    units=mod_var_units,
-                    desc=desc,
-                )
-                lower = mod_var['lower']
-                upper = mod_var['upper']
-                scaler = mod_var['scaler']
-                self.add_design_variable(name, lower=lower, upper=upper, scaler=scaler)
-                self.module_inputs.append(input_variable)
-            else:
-                raise NotImplementedError
+                elif mod_var['dv_flag'] is True:
+                    input_variable = self.create_input(
+                        name=name,
+                        val=mod_var_val,
+                        shape=mod_var_shape,
+                        units=mod_var_units,
+                        desc=desc,
+                    )
+                    lower = mod_var['lower']
+                    upper = mod_var['upper']
+                    scaler = mod_var['scaler']
+                    self.add_design_variable(name, lower=lower, upper=upper, scaler=scaler)
+                    self.module_inputs[name] = dict(
+                        shape=shape, 
+                        importance=importance)
+                else:
+                    raise NotImplementedError
         
+        # else: if no module is provided
+        # In this case, all variables will be declared variables 
+        else: 
+            input_variable = self.declare_variable(
+                name=name, 
+                val=val, 
+                shape=shape, 
+                units=units, 
+                desc=desc,
+            )
+            self.module_inputs[name] = dict(
+                shape=shape, 
+                importance=importance)
+
         return input_variable
     
     def register_module_output(
             self, 
             name: str, 
-            mod_var=None, 
-            promotes: bool=False,
+            var=None, 
             shape=None,
+            importance=0,
         ):
         """
         Register a module variable as a csdl output variable.
@@ -166,20 +185,22 @@ class ModuleCSDL(Model):
         """
 
         # Check if the method key words set by the user make sense
-        if mod_var is None and shape is None:
+        if var is None and shape is None:
             raise Exception(f"Set 'mod_var' key word or specify a shape to create an output that is indexable")
-        elif mod_var is not None and shape is not None:
+        elif var is not None and shape is not None:
             raise Exception(f"Attempting to register {name} as an output while specifying a shape. A shape can only be specified if 'mod_var' is 'None'.")
-        elif mod_var is None and shape is not None:
+        elif var is None and shape is not None:
             output_variable = self.create_output(name=name, shape=shape)
-            self.module_outputs.append(output_variable)
-        else:
-            if promotes is True:
-                # print('PROMOTES is TRUE')
-                self.promoted_vars.append(name)
-                self.module.promoted_vars.append(name)
-            output_variable = self.register_output(name=name, var=mod_var)
-            self.module_outputs.append(output_variable)
+            self.module_outputs[name] = dict(
+                shape=shape,
+                importance=importance,
+            )
+        else: 
+            output_variable = self.register_output(name=name, var=var)
+            self.module_outputs[name] = dict(
+                shape=var.shape,
+                importance=importance,
+            )
         
         # if promotes is True:
         #     print('PROMOTES is TRUE')
@@ -202,25 +223,32 @@ class ModuleCSDL(Model):
         Calls the `add` method of the csld `Model` class.
         """
         GraphRepresentation(submodule)
-        print('ADDING_MODULES: inputs', [name, submodule.module_inputs])
-        # Two options for promotions 
-        # (by default, promotions are suppressed when adding submodules):
-        # 1) Promote the entire submodel
-        if promotes:
+        # submodule.define()
+        
+        # Need to increment each input of the sub_module 
+        for input in submodule.module_inputs.values():
+           input['importance'] += increment 
+
+        # 1) Only promote a subset of user-defined variables
+        if promotes is not None:
             self.add(submodule, name, promotes=promotes)
-            self.sub_modules.append(submodule)
-        # 2) Only promote output variable that were registered
-        #    with register_module_output(name, mod_var, promotes=True)
+            self.promoted_vars += promotes
+            self.sub_modules[name] = dict(
+                inputs=submodule.module_inputs,
+                outputs=submodule.module_outputs,
+                promoted_vars=promotes
+            )
+        
+        # 2) Promote the entire submodel
         else:
             self.add(submodule, name)
-            self.sub_modules.append(submodule)
-            # print(f'promoted variables for module {self.module}', self.module.promoted_vars)
-            # print(self.module.csdl_inputs)
-            # self.module.promoted_vars = list()
-            # self.module.csdl_inputs = list()
-            # self.add(submodule, name, promotes=['radius', 'thrust'])#self.module.promoted_vars)
-        
-        pass
+            self.promoted_vars += list(submodule.module_inputs.keys()) + list(submodule.module_outputs.keys())
+            self.sub_modules[name] = dict(
+                inputs=submodule.module_inputs,
+                outputs=submodule.module_outputs,
+                promoted_vars=list(submodule.module_inputs.keys()) + list(submodule.module_outputs.keys()),
+            )
+        # print('sub_module', self.sub_modules)
 
     def connect_modules(self, a: str, b: str):
         """
@@ -229,6 +257,37 @@ class ModuleCSDL(Model):
         Calls the `connect` method of the csdl `Model` class.
         """
         self.connect(a, b)
+
+
+    def visualize_implementation(self, importance=0):
+        from pyxdsm.XDSM import (
+            XDSM,
+            OPT,
+            SUBOPT,
+            SOLVER,
+            DOE,
+            IFUNC,
+            FUNC,
+            GROUP,
+            IGROUP,
+            METAMODEL,
+            LEFT,
+            RIGHT,
+        )
+
+        x = XDSM()
+
+        counter = 0
+        for module, module_values in self.sub_modules.items():
+            if importance == 0:
+                x.add_system(self.name, OPT, f"{self.name}")
+                x.add_input(self.name, list(self.module_inputs.keys()))
+                x.add_output(self.name, list(self.module_outputs), side=RIGHT)
+                break
+                
+        x.write('test_xdsm')
+
+
     
 
 
