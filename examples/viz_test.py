@@ -1,92 +1,229 @@
-from pyxdsm.XDSM import (
-    XDSM,
-    OPT,
-    SUBOPT,
-    SOLVER,
-    DOE,
-    IFUNC,
-    FUNC,
-    GROUP,
-    IGROUP,
-    METAMODEL,
-    LEFT,
-    RIGHT,
-)
+greek_letters = [
+    "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", 
+    "iota", "kappa", "lambda", "mu", "nu", "xi", "omicron", "pi", "rho", 
+    "sigma", "tau", "upsilon", "phi", "chi", "psi", "omega",
+    "Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Eta", "Theta", 
+    "Iota", "Kappa", "Lambda", "Mu", "Nu", "Xi", "Omicron", "Pi", "Rho", 
+    "Sigma", "Tau", "Upsilon", "Phi", "Chi", "Psi", "Omega"
+]
 
-x = XDSM(
-    # auto_fade={
-    #     # "inputs": "none",
-    #     "outputs": "connected",
-    #     "connections": "outgoing",
-    #     # "processes": "none",
-    # }
-)
+special_characters = ['max', 'min']
 
-x.add_system("opt", OPT, r"\text{Optimizer}")
-x.add_system("DOE", DOE, r"\text{DOE}")
-x.add_system("MDA", SOLVER, r"\text{Newton}")
-x.add_system("D1", FUNC, "D_1")
+def rlo(string, old_substring, new_substring):
+    last_occurrence_index = string.rfind(old_substring)
+    if last_occurrence_index == -1:
+        return string  # Sub-string not found in string
+    else:
+        return string[:last_occurrence_index] + new_substring + string[last_occurrence_index + len(old_substring):]
 
-# can fade out blocks to allow for emphasis on sub-sections of XDSM
-x.add_system("D2", IFUNC, "D_2", faded=True)
 
-x.add_system("D3", IFUNC, "D_3")
-x.add_system("subopt", SUBOPT, "SubOpt", faded=True)
-x.add_system("G1", GROUP, "G_1")
-x.add_system("G2", IGROUP, "G_2")
-x.add_system("MM", METAMODEL, "MM")
+def generate_dsm_text(s):
+    space_split = s.split(" ")
+    return_string = r""
+    for string in space_split:
+        new_string = string.split("_") # Non underscore 
+        if len(new_string) == 1:
+            if string in greek_letters:
+                return_string += f" \{string}"
+            else: 
+                return_string += r" \text{ " + string + r"}"
+        else:
+            counter = 0
+            for math_string in new_string:
+                if counter == len(new_string)-1:
+                    if math_string in greek_letters:
+                        return_string += f"\{math_string}" + r"}"*counter
+                    elif len(math_string) == 1 or math_string.isnumeric() is True or math_string in special_characters: 
+                        return_string += math_string + r"}"*counter
+                    else:
+                        # print('return string', [return_string, math_string])
+                        return_string = rlo(return_string, "_{", " ") +   math_string
+                    break
+                else:
+                    if math_string in greek_letters:
+                        return_string += f"\{math_string}" + r"_{"
+                    elif counter == 0:
+                        return_string += math_string + r"_{"
+                    elif len(math_string) == 1 or math_string.isnumeric() is True:
+                        return_string += math_string + r"_{"
+                    else:
+                        return_string += math_string + r" "
+                counter += 1
 
-# if you give the label as a list or tuple, it splits it onto multiple lines
-x.add_system("F", FUNC, ("F", r"\text{Functional}"))
+    return return_string.replace(" ", "\,")
 
-# stacked can be used to represent multiple instances that can be run in parallel
-x.add_system("H", FUNC, "H", stack=True)
+# print(generate_dsm_text("reference_chord"))
 
-x.add_process(
-    ["opt", "DOE", "MDA", "D1", "D2", "subopt", "G1", "G2", "MM", "F", "H", "opt"],
-    arrow=True,
-)
+# exit()
 
-x.connect("opt", "D1", ["x", "z", "y_2"], label_width=2)
-x.connect("opt", "D2", ["z", "y_1"])
-x.connect("opt", "D3", "z, y_1")
-x.connect("opt", "subopt", "z, y_1")
-x.connect("D3", "G1", "y_3")
-x.connect("subopt", "G1", "z_2")
-x.connect("subopt", "G2", "z_2")
-x.connect("subopt", "MM", "z_2")
-x.connect("subopt", "F", "f")
-x.connect("MM", "subopt", "f")
-x.connect("opt", "G2", "z")
-x.connect("opt", "F", "x, z")
-x.connect("opt", "F", "y_1, y_2")
+# def rlo(string, old_substring, new_substring):
+#     last_occurrence_index = string.rfind(old_substring)
+#     if last_occurrence_index == -1:
+#         return string  # Sub-string not found in string
+#     else:
+#         return string[:last_occurrence_index] + new_substring + string[last_occurrence_index + len(old_substring):]
 
-# you can also stack variables
-x.connect("opt", "H", "y_1, y_2", stack=True)
 
-x.connect("D1", "opt", r"\mathcal{R}(y_1)")
-x.connect("D2", "opt", r"\mathcal{R}(y_2)")
+# def count_characters(s):
+#     space_split = s.split(" ")
+#     return_string = r""
+#     for string in space_split:
+#         new_string = string.split("_") # Non underscore 
+#         if len(new_string) == 1:
+#             if string in greek_letters:
+#                 return_string += f" \{string}"
+#             else: 
+#                 return_string += r" \text{ " + string + r"}"
+#         else:
+#             counter = 0
+#             for math_string in new_string:
+#                 if counter == len(new_string)-1:
+#                     if math_string in greek_letters:
+#                         return_string += f"\{math_string}" + r"}"*counter
+#                     elif len(math_string) == 1 or math_string.isnumeric() is True:
+#                         return_string += math_string + r"}"*counter
+#                     else:
+#                         num_brackets = return_string.count("_{")
+#                         print('num_brackets', num_brackets)
+#                         if num_brackets > 1:
+#                             return_string =  rlo(return_string, "_{", "}"*(counter-1)) + " " + math_string
+#                         else:
+#                             return_string += "} " + math_string
+#                             # return_string.replace(r"_{", " ",-2)  + math_string 
+#                     break
+#                 else:
+#                     if math_string in greek_letters:
+#                         return_string += f"\{math_string}" + r"_{"
+#                     elif len(math_string) == 1 or math_string.isnumeric is True:
+#                         print('elif', [return_string, math_string])
+#                         if return_string[-1] != "{":
+#                             return_string += r"_{" + math_string
+#                         else:    
+#                             return_string += math_string + r"_{" 
+#                     else:
+#                         print('else', [return_string, math_string])
+#                         return_string = rlo(return_string, "_{", " ") + math_string 
+#                 counter += 1
+ 
+#         # print(new_string==string)
+#     # if underscore_split:
+#     #     print(underscore_split)
+#     #     pass
+#     # elif space_split:
+#     #     string = r"\text{" + space_split + "}"
 
-x.connect("F", "opt", "f")
-x.connect("H", "opt", "h", stack=True)
+#     # for i in range(len(parts)-1):
+#     #     left_count = len(parts[i])
+#     #     right_count = len(parts[i+1])
+#     #     counts.append((left_count, right_count))
+#     return return_string
 
-# can specify inputs to represent external information coming into the XDSM
-x.add_input("D1", "P_1")
-x.add_input("D2", "P_2")
-x.add_input("opt", r"x_0", stack=True)
+# print(count_characters("x_alpha_module"))
 
-# can put outputs on the left or right sides
-x.add_output("opt", r"x^*, z^*", side=RIGHT)
-x.add_output("D1", r"y_1^*", side=LEFT)
-x.add_output("D2", r"y_2^*", side=LEFT)
-x.add_output("F", r"f^*", side=RIGHT)
-x.add_output("H", r"h^*", side=RIGHT)
-x.add_output("opt", r"y^*", side=LEFT)
+# def convert_snake_case(s):
+#     parts = s.split("_")
+#     new_parts = []
+#     for part in parts:
+#         if len(part) > 1:
+#             if part in greek_letters:
+#                 new_parts.append(f"\{part}")
+#             new_parts.append(part)
+#         else:
+#             new_parts.append(f"\\mathrm{{{part}}}")
+#     return " ".join(new_parts)
 
-x.add_process(["output_opt", "opt", "left_output_opt"])
+# # 'a $\\mathrm{1}$'
+# exit()
 
-x.write("kitchen_sink", cleanup=False)
-x.write_sys_specs("sink_specs")
+# from pyxdsm.XDSM import (
+#     XDSM,
+#     OPT,
+#     SUBOPT,
+#     SOLVER,
+#     DOE,
+#     IFUNC,
+#     FUNC,
+#     GROUP,
+#     IGROUP,
+#     METAMODEL,
+#     LEFT,
+#     RIGHT,
+# )
+
+# x = XDSM(
+#     # auto_fade={
+#     #     # "inputs": "none",
+#     #     "outputs": "connected",
+#     #     "connections": "outgoing",
+#     #     # "processes": "none",
+#     # }
+# )
+
+# x.add_system("opt", OPT, r"\text{Optimizer}")
+# x.add_system("DOE", DOE, r"\text{DOE}")
+# x.add_system("MDA", SOLVER, r"\text{Newton}")
+# x.add_system("D1", FUNC, "D_1")
+
+# # can fade out blocks to allow for emphasis on sub-sections of XDSM
+# x.add_system("D2", IFUNC, "D_2", faded=True)
+
+# x.add_system("D3", IFUNC, "D_3")
+# x.add_system("subopt", SUBOPT, "SubOpt", faded=True)
+# x.add_system("G1", GROUP, "G_1")
+# x.add_system("G2", IGROUP, "G_2")
+# x.add_system("MM", METAMODEL, "MM")
+
+# # if you give the label as a list or tuple, it splits it onto multiple lines
+# x.add_system("F", FUNC, ("F", r"\text{Functional}"))
+
+# # stacked can be used to represent multiple instances that can be run in parallel
+# x.add_system("H", FUNC, "H", stack=True)
+
+# x.add_process(
+#     ["opt", "DOE", "MDA", "D1", "D2", "subopt", "G1", "G2", "MM", "F", "H", "opt"],
+#     arrow=True,
+# )
+
+# x.connect("opt", "D1", ["x", "z", "y_2"], label_width=2)
+# x.connect("opt", "D2", ["z", "y_1"])
+# x.connect("opt", "D3", "z, y_1")
+# x.connect("opt", "subopt", "z, y_1")
+# x.connect("D3", "G1", "y_3")
+# x.connect("subopt", "G1", "z_2")
+# x.connect("subopt", "G2", "z_2")
+# x.connect("subopt", "MM", "z_2")
+# x.connect("subopt", "F", "f")
+# x.connect("MM", "subopt", "f")
+# x.connect("opt", "G2", "z")
+# x.connect("opt", "F", "x, z")
+# x.connect("opt", "F", "y_1, y_2")
+
+# # you can also stack variables
+# x.connect("opt", "H", "y_1, y_2", stack=True)
+
+# x.connect("D1", "opt", r"\mathcal{R}(y_1)")
+# x.connect("D2", "opt", r"\mathcal{R}(y_2)")
+
+# x.connect("F", "opt", "f")
+# x.connect("H", "opt", "h", stack=True)
+
+# # can specify inputs to represent external information coming into the XDSM
+# x.add_input("D1", "P_1")
+# x.add_input("D2", "P_2")
+# x.add_input("opt", r"x_0", stack=True)
+
+# # can put outputs on the left or right sides
+# x.add_output("opt", r"x^*, z^*", side=RIGHT)
+# x.add_output("D1", r"y_1^*", side=LEFT)
+# x.add_output("D2", r"y_2^*", side=LEFT)
+# x.add_output("F", r"f^*", side=RIGHT)
+# x.add_output("H", r"h^*", side=RIGHT)
+# x.add_output("opt", r"y^*", side=LEFT)
+
+# x.add_process(["output_opt", "opt", "left_output_opt"])
+
+# x.write("kitchen_sink", cleanup=False)
+# x.write_sys_specs("sink_specs")
 
 # import numpy as np
 # import matplotlib.pyplot as plt

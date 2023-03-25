@@ -3,6 +3,7 @@ import numpy as np
 from csdl import GraphRepresentation
 import warnings
 from lsdo_modules.utils.make_xdsm import make_xdsm
+from itertools import count
 
 
 def custom_formatwarning(msg, *args, **kwargs):
@@ -16,13 +17,16 @@ class ModuleCSDL(Model):
     Class acting as a liason between CADDEE and CSDL. 
     The API mirrors that of the CSDL Model class. 
     """ 
+    _ids = count(0)
     def __init__(self, module=None, sub_modules=None, name=None, **kwargs):
+        self.id = next(self._ids)
         self.module = module
         self.sub_modules_csdl = sub_modules
         self.name = name
         self.promoted_vars = list()
         
         self.module_inputs = dict()
+        self.module_declared_vars = dict()
         self.module_outputs = dict()
         self.sub_modules = dict()
         self._module_output_names = list()
@@ -68,14 +72,14 @@ class ModuleCSDL(Model):
                 # Check if the variable is computed in an upstream module
                 if name in self._module_output_names:
                     input_variable = self.declare_variable(name=name, shape=shape)
-                    self.module_inputs[name] = dict(
+                    self.module_declared_vars[name] = dict(
                         shape=shape, 
                         importance=importance)
                 # Raise warning if not and store variable name, shape, val in auto_iv
                 else:
                     input_variable = self.declare_variable(name=name, val=val, shape=shape)
                     self._auto_iv.append((name, val, shape))
-                    self.module_inputs[name] = dict(
+                    self.module_declared_vars[name] = dict(
                         shape=shape, 
                         importance=importance)
                     warnings.warn(f"CSDL variable '{name}' is neither a user-defined input (specified with the 'set_module_input' method) nor an output that is computed upstream (all upstream outputs: {self._module_output_names}). This variable will by of type 'DeclaredVariable' with shape {shape} and value {val}")
@@ -146,7 +150,7 @@ class ModuleCSDL(Model):
                 units=units, 
                 desc=desc,
             )
-            self.module_inputs[name] = dict(
+            self.module_declared_vars[name] = dict(
                 shape=shape, 
                 importance=importance)
 
@@ -216,7 +220,16 @@ class ModuleCSDL(Model):
             name,
             promotes=None,
             increment : int = 1
-        ): 
+        ):
+
+        if self.id == 0:
+            pass
+        elif self.id == 1:
+            raise Exception('Weird nesting of ModuleCSDL sub-classes.')
+        elif self.id > 0:
+            increment += (self.id - 1)
+        else:
+            raise NotImplementedError
         """
         Add a submodule to a parent module.
 
@@ -225,9 +238,15 @@ class ModuleCSDL(Model):
         GraphRepresentation(submodule)
         # submodule.define()
         
-        # Need to increment each input of the sub_module 
+        # Need to increment each input and output of the sub_module 
         for input in submodule.module_inputs.values():
-           input['importance'] += increment 
+            input['importance'] += increment
+        
+        for declared_var in submodule.module_declared_vars.values():
+            declared_var['importance'] += increment 
+
+        for output in submodule.module_outputs.values():
+            output['importance'] += increment 
 
         # 1) Only promote a subset of user-defined variables
         if promotes is not None:
@@ -235,8 +254,10 @@ class ModuleCSDL(Model):
             self.promoted_vars += promotes
             self.sub_modules[name] = dict(
                 inputs=submodule.module_inputs,
+                declared_vars=submodule.module_declared_vars,
                 outputs=submodule.module_outputs,
-                promoted_vars=promotes
+                promoted_vars=promotes,
+                submodules=submodule.sub_modules,
             )
         
         # 2) Promote the entire submodel
@@ -245,8 +266,10 @@ class ModuleCSDL(Model):
             self.promoted_vars += list(submodule.module_inputs.keys()) + list(submodule.module_outputs.keys())
             self.sub_modules[name] = dict(
                 inputs=submodule.module_inputs,
+                declared_vars=submodule.module_declared_vars,
                 outputs=submodule.module_outputs,
                 promoted_vars=list(submodule.module_inputs.keys()) + list(submodule.module_outputs.keys()),
+                submodules=submodule.sub_modules,
             )
         # print('sub_module', self.sub_modules)
 
@@ -274,18 +297,98 @@ class ModuleCSDL(Model):
             LEFT,
             RIGHT,
         )
+        def find_up_stream_module(list_of_tuples, inputs_from_upstream):
+            modules = []
+            for input_from_upstream in inputs_from_upstream:
+                for module, output in list_of_tuples:
+                    if input_from_upstream == output:
+                        modules.append(module)
+            return modules
+
+        def find_inputs_outputs(dictionary, inp_out_list=[], inp_out='inputs'):
+            for k, v in dictionary.items():
+                if k == inp_out:
+                    for k2, v2 in v.items():
+                        if v2['importance'] <= (importance+1):
+                            inp_out_list.append(k2)
+                        else:
+                            pass
+                    else:
+                        pass
+                elif isinstance(v, dict):
+                    if inp_out_list:
+                        find_inputs_outputs(v, inp_out_list, inp_out=inp_out)
+                    else:
+                        find_inputs_outputs(v, inp_out_list, inp_out=inp_out)
+                else:
+                    pass
+            
+            return inp_out_list
+        # TODO: dsm connections for nesting 
+        def unpack_sub_modules(dictionary, importance_outputs = []):
+            for module, module_values in dictionary.items():
+                # Collect all module outputs with importance less than
+                # or equal to the importance specified by the user
+                for sub_mod_out, sub_mod_out_par in module_values['outputs'].items():
+                    if sub_mod_out_par['importance'] <= importance:
+                        importance_outputs.append((module, sub_mod_out))
+                # If there are "important" outputs call 'add_system'
+                if importance_outputs:
+                    print(module)
+                    print(importance_outputs)
+                   
+                    x.add_system(module, FUNC, generate_dsm_text(module))
+                    
+                    # Add any inputs defined by the user
+                    inputs_from_user = list(set(user_module_inputs) & set(list(module_values['inputs'].keys())))
+                    if inputs_from_user:
+                        x.add_input(module, [generate_dsm_text(connection) for connection in inputs_from_user])
+                    
+                    # Check if there are any inputs from upstream modules
+                    inputs_from_upstream = list(set(list(module_values['declared_vars'].keys())) & set([t[1] for t in importance_outputs]))
+                    print(inputs_from_upstream)
+                    print('\n')
+                    if inputs_from_upstream:
+                        upstream_modules = find_up_stream_module(importance_outputs, inputs_from_upstream)
+                        for upstream_module in upstream_modules:
+                            x.connect(upstream_module, module, [generate_dsm_text(connection) for connection in inputs_from_upstream])
+                if module_values['submodules']:
+                    unpack_sub_modules(module_values['submodules'], importance_outputs=[])
+
+            return module, module_values
+
 
         x = XDSM()
+        from examples.viz_test import generate_dsm_text
+        
+        # print(find_inputs_outputs(self.sub_modules, inp_out_list=[], inp_out='inputs'))
+        # print(find_inputs_outputs(self.sub_modules, inp_out_list=[], inp_out='outputs'))
+        # exit()
+        
+        user_module_inputs =  find_inputs_outputs(self.sub_modules,inp_out_list=[], inp_out='inputs')
+                                                  
+        if importance == 0:
+            x.add_system(self.name, OPT, generate_dsm_text(self.name))
+            parent_module_inputs = list(self.module_inputs.keys())
+            parent_module_outputs = list(self.module_outputs.keys())
+            if not parent_module_inputs:
+                parent_module_inputs = user_module_inputs
+            if not parent_module_outputs:
+                parent_module_outputs = find_inputs_outputs(self.sub_modules[list(self.sub_modules)[-1]], inp_out_list=[],inp_out='outputs')
 
-        counter = 0
-        for module, module_values in self.sub_modules.items():
-            if importance == 0:
-                x.add_system(self.name, OPT, f"{self.name}")
-                x.add_input(self.name, list(self.module_inputs.keys()))
-                x.add_output(self.name, list(self.module_outputs), side=RIGHT)
-                break
-                
-        x.write('test_xdsm')
+            x.add_input(self.name, [generate_dsm_text(input) for input in parent_module_inputs])
+            x.add_output(self.name, [generate_dsm_text(input) for input in parent_module_outputs], side=RIGHT)
+        
+        else:
+            module, module_values = unpack_sub_modules(self.sub_modules)
+            # for module, module_values in self.sub_modules.items():
+                # pass
+
+            # Lastly, show outputs of last module
+            x.add_output(module, [generate_dsm_text(output) for output in list(module_values['outputs'].keys())], side=RIGHT)
+            # print(list(module_values['outputs'].keys()))
+        exit()
+        x.write(f'{self.name}_xdsm')
 
 
     
