@@ -18,6 +18,7 @@ def rlo(string, old_substring, new_substring):
 
 
 def generate_dsm_text(s):
+    print(s)
     space_split = s.split(" ")
     return_string = r""
     for string in space_split:

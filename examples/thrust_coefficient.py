@@ -1,5 +1,5 @@
 from lsdo_modules.module.module import Module
-from lsdo_modules.moduel_csdl.module_csdl import ModuleCSDL
+from lsdo_modules.module_csdl.module_csdl import ModuleCSDL
 import numpy as np
 from python_csdl_backend import Simulator
 from csdl import GraphRepresentation

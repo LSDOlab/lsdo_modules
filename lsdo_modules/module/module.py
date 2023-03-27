@@ -19,6 +19,8 @@ class Module:
             scaler=scaler,
         )
 
+    def connect(self): pass
+
     
 
 
