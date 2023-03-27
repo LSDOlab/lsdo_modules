@@ -34,9 +34,10 @@ def generate_dsm_text(s):
                     if math_string in greek_letters:
                         return_string += f"\{math_string}" + r"}"*counter
                     elif len(math_string) == 1 or math_string.isnumeric() is True or math_string in special_characters: 
+                        print('return string', [return_string, math_string])
                         return_string += math_string + r"}"*counter
                     else:
-                        # print('return string', [return_string, math_string])
+                        print('return string', [return_string, math_string])
                         return_string = rlo(return_string, "_{", " ") +   math_string
                     break
                 else:
@@ -50,9 +51,14 @@ def generate_dsm_text(s):
                         return_string += math_string + r" "
                 counter += 1
 
+    if return_string.count('{') != return_string.count('}'):
+        return_string = return_string.replace('{', '')
+        return_string = return_string.replace('}', '')
+        return_string = return_string.replace('_', ' ')
+        print(return_string)
     return return_string.replace(" ", "\,")
 
-# print(generate_dsm_text("reference_chord"))
+# print(generate_dsm_text("dummy_output_2"))
 
 # exit()
 

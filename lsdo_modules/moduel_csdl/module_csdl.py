@@ -2,7 +2,7 @@ from csdl import Model
 import numpy as np
 from csdl import GraphRepresentation
 import warnings
-from lsdo_modules.utils.make_xdsm import make_xdsm
+# from lsdo_modules.utils.make_xdsm import make_xdsm
 from itertools import count
 
 
@@ -236,17 +236,19 @@ class ModuleCSDL(Model):
         Calls the `add` method of the csld `Model` class.
         """
         GraphRepresentation(submodule)
-        # submodule.define()
         
         # Need to increment each input and output of the sub_module 
         for input in submodule.module_inputs.values():
-            input['importance'] += increment
+            if input['importance'] != 0:
+                input['importance'] += increment
         
         for declared_var in submodule.module_declared_vars.values():
-            declared_var['importance'] += increment 
+            if declared_var['importance'] != 0:
+                declared_var['importance'] += increment 
 
         for output in submodule.module_outputs.values():
-            output['importance'] += increment 
+            if output['importance'] != 0:
+                output['importance'] += increment 
 
         # 1) Only promote a subset of user-defined variables
         if promotes is not None:
@@ -258,6 +260,7 @@ class ModuleCSDL(Model):
                 outputs=submodule.module_outputs,
                 promoted_vars=promotes,
                 submodules=submodule.sub_modules,
+                auto_iv=submodule._auto_iv,
             )
         
         # 2) Promote the entire submodel
@@ -270,6 +273,7 @@ class ModuleCSDL(Model):
                 outputs=submodule.module_outputs,
                 promoted_vars=list(submodule.module_inputs.keys()) + list(submodule.module_outputs.keys()),
                 submodules=submodule.sub_modules,
+                auto_iv=submodule._auto_iv,
             )
         # print('sub_module', self.sub_modules)
 
@@ -282,8 +286,8 @@ class ModuleCSDL(Model):
         self.connect(a, b)
 
 
-    def visualize_implementation(self, importance=0):
-        from pyxdsm.XDSM import (
+    def visualize_implementation(self, importance=0, show_outputs=True):
+        from  pyxdsm.XDSM import (
             XDSM,
             OPT,
             SUBOPT,
@@ -325,35 +329,44 @@ class ModuleCSDL(Model):
             
             return inp_out_list
         # TODO: dsm connections for nesting 
-        def unpack_sub_modules(dictionary, importance_outputs = []):
+        def unpack_sub_modules(dictionary, importance_outputs = [], sub_modules = []):
             for module, module_values in dictionary.items():
                 # Collect all module outputs with importance less than
                 # or equal to the importance specified by the user
+                importance_outputs_copy = importance_outputs.copy()
                 for sub_mod_out, sub_mod_out_par in module_values['outputs'].items():
-                    if sub_mod_out_par['importance'] <= importance:
+                    if sub_mod_out_par['importance'] >0 and sub_mod_out_par['importance']  <= importance:
                         importance_outputs.append((module, sub_mod_out))
                 # If there are "important" outputs call 'add_system'
-                if importance_outputs:
-                    print(module)
-                    print(importance_outputs)
-                   
+                if set(importance_outputs) != set(importance_outputs_copy):
                     x.add_system(module, FUNC, generate_dsm_text(module))
+                    sub_modules.append((module, module_values))
+                    if show_outputs is True:
+                        x.add_output(module, [generate_dsm_text(output) for output in list(module_values['outputs'].keys())], side=RIGHT)
                     
                     # Add any inputs defined by the user
                     inputs_from_user = list(set(user_module_inputs) & set(list(module_values['inputs'].keys())))
                     if inputs_from_user:
                         x.add_input(module, [generate_dsm_text(connection) for connection in inputs_from_user])
+                    # inputs_auto_iv = list(set(auto_iv_inputs) & set(list(module_values['inputs'].keys())))
+                    # if inputs_auto_iv:
+                    #     x.add_input(module, [generate_dsm_text(connection) for connection in inputs_auto_iv], faded=True)
                     
                     # Check if there are any inputs from upstream modules
                     inputs_from_upstream = list(set(list(module_values['declared_vars'].keys())) & set([t[1] for t in importance_outputs]))
-                    print(inputs_from_upstream)
-                    print('\n')
+                    # print('inputs_from_upstream', inputs_from_upstream)
+                    # print('module', module)
+                    # print('module_outputs', list(module_values['outputs'].keys()))
+                    # print('\n')
                     if inputs_from_upstream:
                         upstream_modules = find_up_stream_module(importance_outputs, inputs_from_upstream)
                         for upstream_module in upstream_modules:
                             x.connect(upstream_module, module, [generate_dsm_text(connection) for connection in inputs_from_upstream])
                 if module_values['submodules']:
-                    unpack_sub_modules(module_values['submodules'], importance_outputs=[])
+                    unpack_sub_modules(module_values['submodules'], importance_outputs=importance_outputs)
+
+            if not importance_outputs:
+                raise Exception('All registered outputs have zero importance')
 
             return module, module_values
 
@@ -366,6 +379,7 @@ class ModuleCSDL(Model):
         # exit()
         
         user_module_inputs =  find_inputs_outputs(self.sub_modules,inp_out_list=[], inp_out='inputs')
+        # auto_iv_inputs = find_inputs_outputs(self.sub_modules,inp_out_list=[], inp_out='auto_iv')
                                                   
         if importance == 0:
             x.add_system(self.name, OPT, generate_dsm_text(self.name))
@@ -381,13 +395,14 @@ class ModuleCSDL(Model):
         
         else:
             module, module_values = unpack_sub_modules(self.sub_modules)
+            print(module_values)
             # for module, module_values in self.sub_modules.items():
                 # pass
 
             # Lastly, show outputs of last module
-            x.add_output(module, [generate_dsm_text(output) for output in list(module_values['outputs'].keys())], side=RIGHT)
+            # x.add_output(module, [generate_dsm_text(output) for output in list(module_values['outputs'].keys())], side=RIGHT)
             # print(list(module_values['outputs'].keys()))
-        exit()
+        # exit()
         x.write(f'{self.name}_xdsm')
 
 

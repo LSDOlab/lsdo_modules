@@ -15,12 +15,12 @@ class RadiusCSDL(ModuleCSDL):
         disk_area = self.register_module_input('disk_area', shape=(1, ))
 
         radius = (s * disk_area / np.pi)**0.5
-        self.register_module_output('radius', radius)
+        self.register_module_output('radius', radius, importance=1)
 
 class DoubleNestedDummy(ModuleCSDL):
     def define(self):
         dd = self.register_module_input('dummy_input_2', val=10)
-        self.register_module_output('dummy_output_2', dd**2)
+        self.register_module_output('dummy_output_2', dd**2, importance=1)
 
 class NestedDummy(ModuleCSDL):
     def initialize(self):
@@ -28,7 +28,7 @@ class NestedDummy(ModuleCSDL):
     def define(self):
         something = self.parameters['something']
         d = self.register_module_input('dummy_input', val=20)
-        self.register_module_output('dummy_output', d**2)
+        self.register_module_output('dummy_output', d**2, importance=1)
 
         double_nested_dummy = DoubleNestedDummy()
         self.add_module(double_nested_dummy, 'triple_nested_dummy_module')
@@ -36,7 +36,7 @@ class NestedDummy(ModuleCSDL):
 class DummyCSDL(ModuleCSDL):
     def define(self):
         T = self.register_module_input('thrust', shape=(1, ))
-        self.register_module_output('eta', 0.9*T/T)
+        self.register_module_output('eta', 0.9*T/T, importance=1)
 
         dummy_module =  NestedDummy(
             something='something'
@@ -58,7 +58,7 @@ class ThrustCSDL(ModuleCSDL):
         D = 2 * R
 
         T = C_T * rho * n**2 * D**4
-        self.register_module_output('thrust', T)
+        self.register_module_output('thrust', T, importance=1)
 
         dummy_model = DummyCSDL()
         self.add_module(dummy_model, 'nested_dummy_module')
@@ -127,12 +127,12 @@ thrust_module_csdl = thrust_module.assemble_csdl()
 # print('module_inputs', thrust_module_csdl.module_outputs)
 # graph = GraphRepresentation(thrust_module_csdl)
 
-thrust_module_csdl.visualize_implementation(importance=2)
+thrust_module_csdl.visualize_implementation(importance=5)
 # exit()
 # print(graph.module)
 sim = Simulator(thrust_module_csdl)
 print('module_inputs',thrust_module_csdl.sub_modules)
-exit()
+# exit()
 sim.run()
 # print(thrust_module_csdl.module.promoted_vars)
 print('module_outputs',thrust_module_csdl.module_outputs)
