@@ -87,11 +87,14 @@ class ThrustComputationCSDL(ModuleCSDL):
             module=self.module,
             sub_modules=self.sub_modules,
             rho=rho,
+            name='thrust_module',
         )
         self.add_module(thrust_module_csdl, 'thrust_module')
 
-        # thrust = self.register_module_input('thrust',  shape=(1, ))
-        # self.register_module_output('T', thrust**0.9)
+        thrust = self.register_module_input('thrust',  shape=(1, ))
+        self.register_module_output('T', thrust**0.9)
+
+        test_input = self.register_module_input('new_input')
 
 
 # define your module (pure python object)
@@ -114,8 +117,9 @@ class ThrustModule(Module):
 # set up the simulation 
 thrust_module = ThrustModule()
 thrust_module.set_module_input('disk_area', val=4.)
-thrust_module.set_module_input('C_T', val=0.25)
+# thrust_module.set_module_input('C_T', val=0.25)
 thrust_module.set_module_input('rpm', val=1200)
+thrust_module.set_module_input('new_input', val=12)
 
 thrust_module_csdl = thrust_module.assemble_csdl()
 # print('\n')
@@ -127,7 +131,7 @@ thrust_module_csdl = thrust_module.assemble_csdl()
 # print('module_inputs', thrust_module_csdl.module_outputs)
 # graph = GraphRepresentation(thrust_module_csdl)
 
-thrust_module_csdl.visualize_implementation(importance=5)
+# thrust_module_csdl.visualize_implementation(importance=5)
 # exit()
 # print(graph.module)
 sim = Simulator(thrust_module_csdl)

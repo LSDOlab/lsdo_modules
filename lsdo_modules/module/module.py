@@ -1,11 +1,22 @@
+from lsdo_modules.utils.parameters import Parameters
+from abc import ABC, abstractmethod
+
 
 # NOTE Unpack kwarg dictionary 
-class Module:
+class Module(ABC):
     def __init__(self, **kwargs) -> None:
+        self.parameters = Parameters()
+        self.initialize(kwargs)
+        self.parameters.update(kwargs)
+        
         self.inputs = dict()
         self.outputs = dict()
         self.promoted_vars = list()
         self.csdl_inputs = list()
+    
+    @abstractmethod
+    def initialize(self, kwargs):
+        raise NotImplementedError
 
     def set_module_input(self, name, val, units='',
                     dv_flag=False, lower=None, upper=None, scaler=None):
