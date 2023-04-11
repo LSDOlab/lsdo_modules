@@ -22,13 +22,13 @@ class ModuleCSDL(Model):
             self, 
             module=None, 
             sub_modules=None,
-            prefix=None,
+            prepend=None,
             name='parent_module', 
             **kwargs
         ):
         self.id = next(self._ids)
         self.module = module
-        self.prefix = prefix
+        self.prepend = prepend
         self.sub_modules_csdl = sub_modules
         self.name = name
         self.promoted_vars = list()
@@ -58,7 +58,7 @@ class ModuleCSDL(Model):
             desc='',
             importance=0,
             computed_upstream=True,
-            vectorized=True,
+            vectorized=False,
             promotes=False,
         ):
         # When calling 'add_module()', we promote everything by default if 
@@ -70,7 +70,7 @@ class ModuleCSDL(Model):
         # variables where 'promotes=True'. The capability of passing in strings 
         # directly into 'promotes=['']' is reatained
         # TODO: see if the lines below need to take into account whether there is 
-        # a prefix or not. Example 'cruise_condition' + 'mach_number'. 
+        # a prepend or not. Example 'cruise_condition' + 'mach_number'. 
         if promotes is True:
             self.promoted_vars.append(name)
         
@@ -83,13 +83,13 @@ class ModuleCSDL(Model):
             # of an upstreams model. If not raise a warning and make the variable
             # an instance of DeclaredVariable
             
-            if self.prefix:
-                name = name.removeprefix(f'{self.prefix}_')
+            if self.prepend:
+                name = name.removeprefix(f'{self.prepend}_')
             else: pass
 
             if computed_upstream is True:
-                if self.prefix:
-                    var_name = f'{self.prefix}_{name}'
+                if self.prepend:
+                    var_name = f'{self.prepend}_{name}'
                     input_variable = self.declare_variable(name=var_name, shape=shape)
                     self.module_declared_vars[name] = dict(
                         shape=shape, 
@@ -121,8 +121,8 @@ class ModuleCSDL(Model):
                             self._module_output_names += [name for name in module_outputs]
                     # Check if the variable is computed in an upstream module
                     if name in self._module_output_names:
-                        if self.prefix:
-                            var_name = f'{self.prefix}_{name}'
+                        if self.prepend:
+                            var_name = f'{self.prepend}_{name}'
                             input_variable = self.declare_variable(name=var_name, shape=shape)
                             self.module_declared_vars[name] = dict(
                                 shape=shape, 
@@ -178,8 +178,8 @@ class ModuleCSDL(Model):
                     mod_var_units = mod_var['units']    
 
                     if mod_var['dv_flag'] is False:
-                        if self.prefix:
-                            var_name = f'{self.prefix}_{name}'
+                        if self.prepend:
+                            var_name = f'{self.prepend}_{name}'
                             input_variable = self.create_input(
                                 name=var_name,
                                 val=mod_var_val,
@@ -208,8 +208,14 @@ class ModuleCSDL(Model):
 
 
                     elif mod_var['dv_flag'] is True:
-                        if self.prefix:
-                            var_name = f'{self.prefix}_{name}'
+                        
+                        if self.prepend:
+                            if 'rpm' in name:
+                                print('prepend')
+                                print(name)
+                                print(f'{self.prepend}_{name}')
+                                # exit()
+                            var_name = f'{self.prepend}_{name}'
                             input_variable = self.create_input(
                                 name=var_name,
                                 val=mod_var_val,
@@ -227,6 +233,18 @@ class ModuleCSDL(Model):
                                 vectorized=vectorized,
                             )
                         else:
+                            if 'rpm' in name:
+                                print('no prepend')
+                                print(self.module)
+                                print(self.sub_modules)
+                                print(self.promoted_vars)
+                                print(self.promoted_vars)
+                                print(self.module_inputs)
+                                print(self.module_declared_vars)
+                                print(name)
+                                print(self.module_inputs)
+                                print(mod_var['val'])
+                                exit()
                             input_variable = self.create_input(
                                 name=name,
                                 val=mod_var_val,
@@ -250,8 +268,14 @@ class ModuleCSDL(Model):
         # else: if no module is provided
         # In this case, all variables will be declared variables 
         else:
-            if self.prefix:
-                var_name = f'{self.prefix}_{name}'
+            # print('exit')
+            # print(name)
+            # exit()
+            # if promotes is True:
+            #     self.promoted_vars.append(name)
+                
+            if self.prepend:
+                var_name = f'{self.prepend}_{name}'
                 input_variable = self.declare_variable(
                     name=var_name, 
                     val=val, 
@@ -380,26 +404,36 @@ class ModuleCSDL(Model):
         
         # 1) Only promote a subset of user-defined variables
         if promotes is not None:
-            self.add(submodule, name, promotes=promotes+self.promoted_vars)
-            self.promoted_vars += promotes
+            # if name == 'wing_vlm':
+            #     print('wing_vlm promoted_vars', submodule.promoted_vars)
+            #     print('self.promoted_vars', self.promoted_vars)
+            #     print('sub_modules', submodule.sub_modules)
+                # exit()
+            self.add(submodule, name, promotes=promotes+submodule.promoted_vars)
+            self.promoted_vars += promotes + submodule.promoted_vars
             self.sub_modules[name] = dict(
                 inputs=submodule.module_inputs,
                 declared_vars=submodule.module_declared_vars,
                 outputs=submodule.module_outputs,
-                promoted_vars=promotes,
+                promoted_vars=promotes+submodule.promoted_vars,
                 submodules=submodule.sub_modules,
                 auto_iv=submodule._auto_iv,
             )
         
         # 2) Promote the entire submodel
         else:
+            # if name == 'VLM_system':
+            #     print('VLM_system promoted_vars', submodule.promoted_vars)
+            #     print('self.promoted_vars', self.promoted_vars+ list(submodule.module_inputs.keys()))
+                # exit()
             self.add(submodule, name)
-            self.promoted_vars += list(submodule.module_inputs.keys()) + list(submodule.module_outputs.keys())
+            self.promoted_vars += submodule.promoted_vars
+            # self.promoted_vars +=  list(submodule.module_inputs.keys()) + list(submodule.module_outputs.keys())
             self.sub_modules[name] = dict(
                 inputs=submodule.module_inputs,
                 declared_vars=submodule.module_declared_vars,
                 outputs=submodule.module_outputs,
-                promoted_vars=list(submodule.module_inputs.keys()) + list(submodule.module_outputs.keys()),
+                promoted_vars=list(submodule.module_declared_vars.keys()) + list(submodule.module_inputs.keys()) + list(submodule.module_outputs.keys()),
                 submodules=submodule.sub_modules,
                 auto_iv=submodule._auto_iv,
             )
