@@ -106,10 +106,10 @@ class ModuleCSDL(Model):
 
             else:
                 if name not in self.module.inputs:
-                    print('self.sub_modules.values()', self.sub_modules.values())
-                    print(self.sub_modules)
-                    print(self.sub_modules_csdl)
-                    print(self.module_outputs)
+                    # print('self.sub_modules.values()', self.sub_modules.values())
+                    # print(self.sub_modules)
+                    # print(self.sub_modules_csdl)
+                    # print(self.module_outputs)
                     # Get all module outputs of upstream modules and append to a list
                     if self.sub_modules_csdl is not None:
                         for sub_module in {**self.sub_modules_csdl, **self.sub_modules}.values():
@@ -136,6 +136,7 @@ class ModuleCSDL(Model):
                                 importance=importance,
                                 vectorized=vectorized,
                             )
+                    
                     # Raise warning if not and store variable name, shape, val in auto_iv
                     # For CADDEE purposes this will need to be an exception 
                     else:
@@ -147,8 +148,11 @@ class ModuleCSDL(Model):
                         # warnings.warn((f"CSDL variable '{name}' is neither a user-defined input (specified with the 'set_module_input' method)")
                         #               (f"nor an output that is computed upstream (all upstream outputs: {self._module_output_names}).")
                         #               (f"This variable will by of type 'DeclaredVariable' with shape {shape} and value {val}"))
+
+                        print(self.module_inputs.keys())
+                        print('\n')
                         error_message = f"One or more unknown or missing user-defined variable(s) {list(self.module.inputs.keys())}. "\
-                                        f"The developer of module '{self.name}' has specified variable '{name}' as an input to their model, "\
+                                        f"The developer of module '{type(self)}' has specified variable '{name}' as an input to their model, "\
                                         "which requires the user to set this variable with 'set_module_input' or it needs to "\
                                         f"be computed (and connected) from an upstream model {self._module_output_names}."
                         raise Exception(error_message)
@@ -233,18 +237,6 @@ class ModuleCSDL(Model):
                                 vectorized=vectorized,
                             )
                         else:
-                            if 'rpm' in name:
-                                print('no prepend')
-                                print(self.module)
-                                print(self.sub_modules)
-                                print(self.promoted_vars)
-                                print(self.promoted_vars)
-                                print(self.module_inputs)
-                                print(self.module_declared_vars)
-                                print(name)
-                                print(self.module_inputs)
-                                print(mod_var['val'])
-                                exit()
                             input_variable = self.create_input(
                                 name=name,
                                 val=mod_var_val,
@@ -404,11 +396,11 @@ class ModuleCSDL(Model):
         
         # 1) Only promote a subset of user-defined variables
         if promotes is not None:
-            # if name == 'wing_vlm':
+            # if name == 'vast_fluid_model':
             #     print('wing_vlm promoted_vars', submodule.promoted_vars)
             #     print('self.promoted_vars', self.promoted_vars)
             #     print('sub_modules', submodule.sub_modules)
-                # exit()
+            #     exit()
             self.add(submodule, name, promotes=promotes+submodule.promoted_vars)
             self.promoted_vars += promotes + submodule.promoted_vars
             self.sub_modules[name] = dict(
